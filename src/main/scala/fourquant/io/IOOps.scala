@@ -22,7 +22,9 @@ import scala.collection.JavaConversions._
  * Created by mader on 2/27/15.
  */
 object IOOps {
-  implicit class fqContext(sc: SparkContext) {
+
+
+  implicit class fqContext(sc: SparkContext) extends Serializable {
 
     private def staticTypeReadImages[T<: RealType[T]](file: String,iFactory: ImgFactory[T],
                                                       iType: T):
@@ -42,11 +44,7 @@ object IOOps {
                                                              bType: () => U)(implicit
                                                                              tm: ClassTag[T]):
     RDD[(String, SparkImage[T,U])] = {
-      class GenericSparkImage(var cs: Either[ArrayWithDim[T],ArrayImg[U,_]]) extends
-        SparkImage[T,U](cs) {
-        def this() = this(Left(ArrayWithDim.empty[T]))
-        override val baseType: U = bType()
-      }
+
       sc.binaryFiles(file).mapPartitions{
         curPart =>
           val io = new ImgOpener()
@@ -54,10 +52,7 @@ object IOOps {
             case (filename,pds) =>
               for (img<-io.openPDS[U](filename,pds,new ArrayImgFactory[U], bType() ))
               yield (filename,
-                new SparkImage[T,U](Right(img.getImg.asInstanceOf[ArrayImg[U,_]])) {
-                  def this() = this(Left())
-                  override val baseType: U = bType()
-                }
+                new GenericSparkImage[T,U](Right(img.getImg.asInstanceOf[ArrayImg[U,_]]),bType)
                 )
           }
       }

@@ -35,6 +35,19 @@ object ScifioOps extends Serializable {
                                                                      )
   object ArrayWithDim {
     def empty[T](implicit tm: ClassTag[T]) = new ArrayWithDim[T](new Array[T](0),Array(0L))
+    def dangerouslyEmpty[T] = new ArrayWithDim[T](null,Array(0L))
+  }
+
+  class GenericSparkImage[T,U<: NativeType[U] with RealType[U]](
+      override var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]],
+      override var baseTypeMaker: () => U)(implicit val itm: ClassTag[T])
+    extends SparkImage[T,U] {
+
+    @deprecated("Only for un-externalization, otherwise it should be avoided completely","1.0")
+    protected[ScifioOps] def this() = this(Left(ArrayWithDim.dangerouslyEmpty[T]),
+      () => null.asInstanceOf[U])(null.asInstanceOf[ClassTag[T]])
+
+    override var tm = itm
   }
 
   /**
@@ -42,14 +55,16 @@ object ScifioOps extends Serializable {
    * @tparam T The type of the primitive used to store data (for serialization)
    * @tparam U The type of the ArrayImg (from ImgLib2)
    */
-  abstract class SparkImage[T,U <: NativeType[U] with RealType[U]](
-              var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]])
-                                                                  (implicit tm: ClassTag[T])
+  trait SparkImage[T,U <: NativeType[U] with RealType[U]]
     extends Externalizable {
 
-    def this()(implicit tm: ClassTag[T]) = this(Left(ArrayWithDim.empty[T]))
+    var tm: ClassTag[T]
 
-    val baseType: U
+    var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]]
+
+    var baseTypeMaker: () => U
+
+    var baseType: U = baseTypeMaker()
 
     /**
      * These methods are pretty basic and just support primitives and their corresponding ImgLib2
@@ -107,11 +122,18 @@ object ScifioOps extends Serializable {
 
     // custom serialization
     @throws[IOException]("if the file doesn't exist")
-    override def writeExternal(out: ObjectOutput): Unit = out.writeObject(getArray)
+    override def writeExternal(out: ObjectOutput): Unit = {
+      out.writeObject(baseTypeMaker)
+      out.writeObject(tm)
+      out.writeObject(getArray)
+    }
 
     @throws[IOException]("if the file doesn't exist")
     @throws[ClassNotFoundException]("if the class cannot be found")
     override def readExternal(in: ObjectInput): Unit = {
+      baseTypeMaker = in.readObject.asInstanceOf[() => U]
+      baseType = baseTypeMaker() // reinitialize since it is probably wrong
+      tm = in.readObject().asInstanceOf[ClassTag[T]]
       coreImage = Left(in.readObject.asInstanceOf[ArrayWithDim[T]])
     }
 
@@ -119,16 +141,16 @@ object ScifioOps extends Serializable {
   }
 
 
-  class SparkFloatImg(coreImage: Either[ArrayWithDim[Float],ArrayImg[FloatType,_]])
-    extends SparkImage[Float,FloatType](coreImage) {
-
-    override val baseType = new FloatType
+  class SparkFloatImg(val hostImg: Either[ArrayWithDim[Float],ArrayImg[FloatType,_]])(
+                     implicit val ctm: ClassTag[Float])
+    extends GenericSparkImage[Float,FloatType](hostImg,() => new FloatType) {
 
     def this(ifimg: ArrayImg[FloatType,_]) = this(Right(ifimg))
 
     def this(rawArray: Array[Float], dim: Array[Long]) = this(Left(ArrayWithDim(rawArray, dim)))
 
     def this() = this(new Array[Float](0),Array(0L))
+
   }
 
   implicit class FQImgOpener(imgOp: ImgOpener) {
