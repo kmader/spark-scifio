@@ -3,12 +3,15 @@ package fourquant.io
 import java.io._
 
 import io.scif.img.ImgOpener
+import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.FloatType
-import net.imglib2.img.array.{ArrayImgFactory, ArrayImg}
+import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess
 import net.imglib2.img.{Img, ImgFactory}
 import org.apache.spark.input.PortableDataStream
+
+import scala.reflect.ClassTag
 
 /**
  * Created by mader on 2/27/15.
@@ -30,11 +33,54 @@ object ScifioOps extends Serializable {
                                                                      rawArray: Array[T],
                                                                      dim: Array[Long]
                                                                      )
+  object ArrayWithDim {
+    def empty[T](implicit tm: ClassTag[T]) = new ArrayWithDim[T](new Array[T](0),Array(0L))
+  }
 
-  trait SparkImage[T,U] extends Serializable {
-    var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]]
-    def arrayToImg(inArr: ArrayWithDim[T]): ArrayImg[U,_]
-    def imgToArray(inImg: ArrayImg[U,_]): ArrayWithDim[T]
+  /**
+   *
+   * @tparam T The type of the primitive used to store data (for serialization)
+   * @tparam U The type of the ArrayImg (from ImgLib2)
+   */
+  abstract class SparkImage[T,U <: NativeType[U] with RealType[U]](
+              var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]])
+                                                                  (implicit tm: ClassTag[T])
+    extends Externalizable {
+
+    def this()(implicit tm: ClassTag[T]) = this(Left(ArrayWithDim.empty[T]))
+
+    val baseType: U
+
+    /**
+     * These methods are pretty basic and just support primitives and their corresponding ImgLib2
+     * types
+     * @param dimArray
+     * @return
+     */
+    protected def arrayToImg(dimArray: ArrayWithDim[T]): ArrayImg[U,_] = {
+      val cImg = new ArrayImgFactory[U]().create(dimArray.dim, baseType)
+      cImg.update(null) match {
+        case ada: ArrayDataAccess[_] =>
+          java.lang.System.arraycopy(dimArray.rawArray, 0,
+            ada.getCurrentStorageArray, 0, dimArray.rawArray.length)
+        case _ => throw new IllegalAccessException("The array access is not available for " + cImg)
+      }
+      cImg
+    }
+
+    protected def imgToArray(cImg: ArrayImg[U,_]): ArrayWithDim[T] = {
+      cImg.update(null) match {
+        case ada: ArrayDataAccess[_] =>
+          ada.getCurrentStorageArray match {
+            case fArr: Array[T] =>
+              ArrayWithDim(fArr,cImg.getDimensions)
+            case junk: AnyRef =>
+              throw new IllegalAccessException(cImg+" has an unexpected type backing "+junk)
+          }
+        case _ =>
+          throw new IllegalAccessException("The array access is not available for " + cImg)
+      }
+    }
 
     private def calcImg = coreImage match {
       case Left(dimArray) => arrayToImg(dimArray)
@@ -46,57 +92,43 @@ object ScifioOps extends Serializable {
       case Right(cImg) => imgToArray(cImg)
     }
 
+    def numDimensions = coreImage match {
+      case Left(dArray) => dArray.dim.length
+      case Right(cImg) => cImg.numDimensions
+    }
 
-    lazy val RawImg = calcImg
-    lazy val RawArray = calcArr
+    def dimension(i: Int): Long =  coreImage match {
+      case Left(dArray) => dArray.dim(i)
+      case Right(cImg) => cImg.dimension(i)
+    }
+
+    lazy val getImg = calcImg
+    lazy val getArray = calcArr
+
+    // custom serialization
+    @throws[IOException]("if the file doesn't exist")
+    override def writeExternal(out: ObjectOutput): Unit = out.writeObject(getArray)
+
+    @throws[IOException]("if the file doesn't exist")
+    @throws[ClassNotFoundException]("if the class cannot be found")
+    override def readExternal(in: ObjectInput): Unit = {
+      coreImage = Left(in.readObject.asInstanceOf[ArrayWithDim[T]])
+    }
+
+
   }
 
-  class SparkFloatImg(var coreImage: Either[ArrayWithDim[Float],ArrayImg[FloatType,_]]) extends
-    SparkImage[Float,FloatType] {
+
+  class SparkFloatImg(coreImage: Either[ArrayWithDim[Float],ArrayImg[FloatType,_]])
+    extends SparkImage[Float,FloatType](coreImage) {
+
+    override val baseType = new FloatType
+
     def this(ifimg: ArrayImg[FloatType,_]) = this(Right(ifimg))
 
     def this(rawArray: Array[Float], dim: Array[Long]) = this(Left(ArrayWithDim(rawArray, dim)))
 
-    override def arrayToImg(dimArray: ArrayWithDim[Float]): ArrayImg[FloatType, _] = {
-      val cImg = new ArrayImgFactory[FloatType]().create(dimArray.dim, new FloatType)
-      cImg.update(null) match {
-        case ada: ArrayDataAccess[_] =>
-          java.lang.System.arraycopy(dimArray.rawArray, 0,
-            ada.getCurrentStorageArray, 0, dimArray.rawArray.length)
-        case _ => throw new IllegalAccessException("The array access is not available for " + cImg)
-      }
-      cImg
-    }
-
-    override def imgToArray(cImg: ArrayImg[FloatType, _]): ArrayWithDim[Float] = {
-      cImg.update(null) match {
-        case ada: ArrayDataAccess[_] =>
-          ada.getCurrentStorageArray match {
-            case fArr: Array[Float] =>
-              ArrayWithDim(fArr,cImg.getDimensions)
-            case junk: AnyRef =>
-              throw new IllegalAccessException(cImg+" has an unexpected type backing "+junk)
-          }
-        case _ =>
-          throw new IllegalAccessException("The array access is not available for " + cImg)
-      }
-    }
-
-    // custom serialization
-    @throws[IOException]("if the file doesn't exist")
-    private def writeObject(oos: ObjectOutputStream): Unit = {
-      oos.writeObject(RawArray)
-    }
-    @throws[IOException]("if the file doesn't exist")
-    @throws[ClassNotFoundException]("if the class cannot be found")
-    private def readObject(in: ObjectInputStream): Unit =  {
-      coreImage = Left(in.readObject.asInstanceOf[ArrayWithDim[Float]])
-    }
-    @throws(classOf[ObjectStreamException])
-    private def readObjectNoData: Unit = {
-      throw new IllegalArgumentException("Cannot have a dataless SparkFloatImg");
-    }
-
+    def this() = this(new Array[Float](0),Array(0L))
   }
 
   implicit class FQImgOpener(imgOp: ImgOpener) {

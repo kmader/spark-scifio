@@ -5,11 +5,12 @@ import java.io.File
 import javax.imageio.ImageIO
 
 import _root_.io.scif.img.ImgOpener
-import net.imglib2.`type`.numeric.real.FloatType
+import fourquant.io.IOOps._
+import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.array.ArrayImgFactory
 import org.apache.spark.SparkContext
 import org.scalatest.FunSuite
-import fourquant.io.IOOps._
+
 import scala.collection.JavaConversions._
 
 class ImageIOTests extends FunSuite {
@@ -43,7 +44,21 @@ class ImageIOTests extends FunSuite {
 
     assert(pImgData.count==1,"only one image")
 
-    val firstImage = pImgData.first._2.FloatImg
+    val firstImage = pImgData.first._2.getImg
+
+    assert(firstImage.numDimensions()==3,"is 2D Image with one slice")
+    assert(firstImage.dimension(0)==xdim,"has the right width")
+    assert(firstImage.dimension(1)==ydim,"has the right height")
+    assert(firstImage.dimension(2)==1,"has only one slice")
+  }
+
+  test("Read a fake image generically spark") {
+    val dtg = () => new DoubleType
+    val pImgData = sc.genericImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
+
+    assert(pImgData.count==1,"only one image")
+
+    val firstImage = pImgData.first._2.getImg
 
     assert(firstImage.numDimensions()==3,"is 2D Image with one slice")
     assert(firstImage.dimension(0)==xdim,"has the right width")
