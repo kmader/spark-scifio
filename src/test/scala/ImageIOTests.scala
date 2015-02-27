@@ -59,19 +59,10 @@ class ImageIOTests extends FunSuite {
     checkTestImage(firstImage.getImg().asInstanceOf[ArrayImg[FloatType,_]])
   }
 
-  test("Read a fake image in spark") {
-    val pImgData = sc.floatImages(testImgPath).cache
-
-    assert(pImgData.count==1,"only one image")
-
-    val firstImage = pImgData.first._2.getImg
-    checkTestImage(firstImage.asInstanceOf[ArrayImg[FloatType,_]])
-
-  }
 
   test("Read a fake image generically spark") {
     val dtg = () => new DoubleType
-    val pImgData = sc.genericImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
+    val pImgData = sc.genericArrayImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
 
     assert(pImgData.count==1,"only one image")
 
@@ -83,7 +74,7 @@ class ImageIOTests extends FunSuite {
 
   test("Read and play with a generic image") {
     val dtg = () => new DoubleType
-    val pImgData = sc.genericImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
+    val pImgData = sc.genericArrayImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
     val indexData = pImgData.map(_._2).flatMap {
       inKV => for(i <- 0 to 5) yield (i,inKV)
     }
@@ -95,6 +86,47 @@ class ImageIOTests extends FunSuite {
     val firstImage = mangledData.first._1._2.getImg
 
     checkTestImage(firstImage.asInstanceOf[ArrayImg[DoubleType,_]])
+  }
+
+  test("Read a float image in spark") {
+    val pImgData = sc.floatImages(testImgPath).cache
+
+    assert(pImgData.count==1,"only one image")
+
+    val firstImage = pImgData.first._2.getImg
+    checkTestImage(firstImage.asInstanceOf[ArrayImg[FloatType,_]])
+
+  }
+
+  test("Read a int image in spark") {
+    val pImgData = sc.intImages(testImgPath).cache
+
+    assert(pImgData.count==1,"only one image")
+
+    val firstImage = pImgData.first._2.getImg
+    checkTestImage(firstImage.asInstanceOf[ArrayImg[FloatType,_]])
+
+  }
+
+  test("Read a double image in spark") {
+    val pImgData = sc.doubleImages(testImgPath).cache
+
+    assert(pImgData.count==1,"only one image")
+
+    val firstImage = pImgData.first._2.getImg
+    checkTestImage(firstImage.asInstanceOf[ArrayImg[FloatType,_]])
+
+  }
+
+  test("Read a big image in spark") {
+
+    val pImgData = sc.doubleImages("/Users/mader/Dropbox/4Quant/Volume_Viewer_2.tif").cache
+
+    assert(pImgData.count==1,"only one image")
+
+    val firstImage = pImgData.first._2.getImg
+    checkTestImage(firstImage.asInstanceOf[ArrayImg[FloatType,_]])
+
   }
 
 }

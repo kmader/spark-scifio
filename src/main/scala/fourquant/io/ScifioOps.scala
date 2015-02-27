@@ -5,7 +5,6 @@ import java.io._
 import io.scif.img.ImgOpener
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
-import net.imglib2.`type`.numeric.real.FloatType
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess
 import net.imglib2.img.{Img, ImgFactory}
@@ -29,6 +28,13 @@ object ScifioOps extends Serializable {
       (0 to img.numDimensions()).map(img.dimension(_)).toArray
   }
 
+
+  /**
+   * The simplist, strongly typed representation of the image
+   * @param rawArray the rawArray to store the values in
+   * @param dim the dimensions (imglib2 format for the image)
+   * @tparam T the type of the image
+   */
   case class ArrayWithDim[@specialized(Long, Int, Float, Double) T](
                                                                      rawArray: Array[T],
                                                                      dim: Array[Long]
@@ -38,11 +44,24 @@ object ScifioOps extends Serializable {
     def dangerouslyEmpty[T] = new ArrayWithDim[T](null,Array(0L))
   }
 
+
+  /**
+   * A basic class which implements a very basic version of the SparkImage trait
+   * @param coreImage the image stored as an 'Either' block
+   * @param baseTypeMaker the closure for creating the ImgLib2 type since they are not serializable
+   * @param itm the classtag for the T since it arrays need to be generated occasionally
+   * @tparam T The type of the primitive used to store data (for serialization)
+   * @tparam U The type of the ArrayImg (from ImgLib2)
+   */
   class GenericSparkImage[T,U<: NativeType[U] with RealType[U]](
       override var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]],
       override var baseTypeMaker: () => U)(implicit val itm: ClassTag[T])
     extends SparkImage[T,U] {
-
+    /**
+     * a basic constructor is required for creating these objects directly from an ObjectStream
+     * (a dummy empty image which can be populated during the un-serialization)
+     * @return a very crippled (NPE's are almost certain) empty image
+     */
     @deprecated("Only for un-externalization, otherwise it should be avoided completely","1.0")
     protected[ScifioOps] def this() = this(Left(ArrayWithDim.dangerouslyEmpty[T]),
       () => null.asInstanceOf[U])(null.asInstanceOf[ClassTag[T]])
@@ -51,7 +70,11 @@ object ScifioOps extends Serializable {
   }
 
   /**
-   *
+   * The basic functionality of a SparkImage which uses the ImgLib2 primitives for storing the
+   * images on local machines and sending them around, it then switches to the ArrayWithDim
+   * format for saving them to disk.
+   * @note T and U must be matched, creating a Double with FloatType will eventually cause hairy
+   *       error messages
    * @tparam T The type of the primitive used to store data (for serialization)
    * @tparam U The type of the ArrayImg (from ImgLib2)
    */
@@ -120,7 +143,11 @@ object ScifioOps extends Serializable {
     lazy val getImg = calcImg
     lazy val getArray = calcArr
 
-    // custom serialization
+    /**
+     * custom serialization writes the typeMaker function, the ClassTag and then the ArrayWithDim
+     * form of the image to the output
+     * @param out the ObjectOutput to write everything to
+     */
     @throws[IOException]("if the file doesn't exist")
     override def writeExternal(out: ObjectOutput): Unit = {
       out.writeObject(baseTypeMaker)
@@ -128,6 +155,11 @@ object ScifioOps extends Serializable {
       out.writeObject(getArray)
     }
 
+    /**
+     * custom serialization for reading in these objects, the order of reading is the typeMaker
+     * closure, the ClassTag and then the ArrayWithDim
+     * @param in the input stream to read from
+     */
     @throws[IOException]("if the file doesn't exist")
     @throws[ClassNotFoundException]("if the class cannot be found")
     override def readExternal(in: ObjectInput): Unit = {
@@ -141,25 +173,39 @@ object ScifioOps extends Serializable {
   }
 
 
-  class SparkFloatImg(val hostImg: Either[ArrayWithDim[Float],ArrayImg[FloatType,_]])(
-                     implicit val ctm: ClassTag[Float])
-    extends GenericSparkImage[Float,FloatType](hostImg,() => new FloatType) {
-
-    def this(ifimg: ArrayImg[FloatType,_]) = this(Right(ifimg))
-
-    def this(rawArray: Array[Float], dim: Array[Long]) = this(Left(ArrayWithDim(rawArray, dim)))
-
-    def this() = this(new Array[Float](0),Array(0L))
-
-  }
-
+  /**
+   * Add the ability (hacky) to open images from PortableDataStreams
+   * @param imgOp the ImgOpener class to be extended
+   */
   implicit class FQImgOpener(imgOp: ImgOpener) {
-
+    /**
+     *
+     * @param filepath the given file path
+     * @return if it is a local file
+     */
+    private def isPathLocal(filepath: String): Boolean = {
+      try {
+        new File(filepath).exists()
+      } catch {
+        case _ => false
+      }
+    }
+    /**
+     * Provides a local path for opening a PortableDataStream
+     * @param pds
+     * @param suffix
+     * @return
+     */
     private def flattenPDS(pds: PortableDataStream, suffix: String) = {
-      val bais = new ByteArrayInputStream(pds.toArray())
-      val tempFile = File.createTempFile("SparkScifioOps","."+suffix)
-      org.apache.commons.io.IOUtils.copy(bais,new FileOutputStream(tempFile))
-      tempFile.getAbsolutePath
+      if (isPathLocal(pds.getPath)) {
+        pds.getPath
+      } else {
+        println("Copying PDS Resource....")
+        val bais = new ByteArrayInputStream(pds.toArray())
+        val tempFile = File.createTempFile("SparkScifioOps","."+suffix)
+        org.apache.commons.io.IOUtils.copy(bais,new FileOutputStream(tempFile))
+        tempFile.getAbsolutePath
+      }
     }
 
     def openPDS[T<: RealType[T]](fileName: String, pds: PortableDataStream, af: ImgFactory[T], tp:

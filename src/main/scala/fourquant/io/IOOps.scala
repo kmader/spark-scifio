@@ -4,7 +4,8 @@ import fourquant.io.ScifioOps._
 import io.scif.img.{ImgOpener, SCIFIOImgPlus}
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
-import net.imglib2.`type`.numeric.real.FloatType
+import net.imglib2.`type`.numeric.real.{FloatType,DoubleType}
+import net.imglib2.`type`.numeric.integer.IntType
 import net.imglib2.img.ImgFactory
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import org.apache.spark.SparkContext
@@ -40,12 +41,19 @@ object IOOps {
       }
     }
 
-    def genericImages[T,U <: NativeType[U] with RealType[U]](file: String,
+    /**
+     * A generic tool for opening images as Arrays
+     * @param filepath the path to the files that need to be loaded
+     * @param bType a function which creates new FloatType objects and can be serialized
+     * @tparam T the primitive type for the array representation of the image
+     * @tparam U the imglib2 type for the ArrayImg representation
+     * @return a list of pathnames (string) and image objects (SparkImage)
+     */
+    def genericArrayImages[T,U <: NativeType[U] with RealType[U]](filepath: String,
                                                              bType: () => U)(implicit
                                                                              tm: ClassTag[T]):
     RDD[(String, SparkImage[T,U])] = {
-
-      sc.binaryFiles(file).mapPartitions{
+      sc.binaryFiles(filepath).mapPartitions{
         curPart =>
           val io = new ImgOpener()
           curPart.flatMap{
@@ -58,18 +66,27 @@ object IOOps {
       }
     }
 
-    def floatImages(file: String): RDD[(String,SparkFloatImg)] = {
-      sc.binaryFiles(file).mapPartitions{
-        curPart =>
-          val io = new ImgOpener()
-          curPart.flatMap{
-            case (filename,pds) =>
-              for (img<-io.openPDS[FloatType](filename,pds,new ArrayImgFactory[FloatType],
-                new FloatType))
-              yield (filename,new SparkFloatImg(img.getImg.asInstanceOf[ArrayImg[FloatType,_]]))
-          }
-      }
-    }
+    /**
+     * A version of generic array Images for float-type images
+     * @return float-formatted images
+     */
+    def floatImages(filepath: String): RDD[(String,SparkImage[Float,FloatType])] = 
+      sc.genericArrayImages[Float,FloatType](filepath,() => new FloatType)
+
+    /**
+     * A version of generic array Images for double-type images
+     * @return float-formatted images
+     */
+    def doubleImages(filepath: String) =
+      sc.genericArrayImages[Double,DoubleType](filepath,() => new DoubleType)
+
+    /**
+     * A version of generic array Images for float-type images
+     * @return float-formatted images
+     */
+    def intImages(filepath: String) =
+      sc.genericArrayImages[Int,IntType](filepath,() => new IntType)
+      
 
 
   }
