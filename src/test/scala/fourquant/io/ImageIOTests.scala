@@ -1,4 +1,4 @@
-package fourquant
+package fourquant.io
 
 import java.awt.image.BufferedImage
 import java.io.File
@@ -13,12 +13,11 @@ import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import org.apache.spark.SparkContext
 import org.apache.spark.SparkContext._
-import org.scalatest.{Matchers, FunSuite}
+import org.scalatest.{FunSuite, Matchers}
 
 import scala.collection.JavaConversions._
 
 class ImageIOTests extends FunSuite with Matchers {
-  import fourquant.ImageIOTests._
   lazy val sc = new SparkContext("local[4]","Test")
 
   val io = new ImgOpener()
@@ -26,7 +25,7 @@ class ImageIOTests extends FunSuite with Matchers {
   val xdim = 100
   val ydim = 120
 
-  lazy val testImgPath = makeImage(xdim,ydim)
+  lazy val testImgPath = fourquant.io.ImageIOTests.makeImage(xdim,ydim)
 
   def checkTestImage[U <: NativeType[U] with RealType[U] ](firstImage: ArrayImg[U,_]): Unit = {
     assert(firstImage.dimension(0)==xdim,"has the right width")
@@ -160,7 +159,7 @@ class ImageIOTests extends FunSuite with Matchers {
 
     val pImgData = sc.doubleImages("/Users/mader/Dropbox/4Quant/Volume_Viewer_2.tif").cache
 
-    assert(pImgData.count==1,"only one image")
+    pImgData.count should equal (1)
 
     val firstImage = pImgData.first._2.getImg.asInstanceOf[ArrayImg[FloatType,_]]
     firstImage.dimension(0) should equal (684)

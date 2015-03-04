@@ -26,7 +26,28 @@ object ScifioOps extends Serializable {
 
     def getDimensions: Array[Long] =
       (0 to img.numDimensions()).map(img.dimension(_)).toArray
+
+    /**
+     * Extract the primitive array from an image (if there is one)
+     * @return an optional array
+     */
+    def getPrimitiveArray: Option[Any] = {
+      img match {
+        case aImg: ArrayImg[U,_] =>
+          aImg.update(null) match {
+            case ada: ArrayDataAccess[_] =>
+              Some(ada.getCurrentStorageArray)
+            case _ =>
+              println("The array access is not available for " + aImg)
+              None
+          }
+        case _ =>
+          println("Image is not of type ArrayImage")
+          None
+      }
+    }
   }
+
 
 
   /**
@@ -53,7 +74,7 @@ object ScifioOps extends Serializable {
    * @tparam T The type of the primitive used to store data (for serialization)
    * @tparam U The type of the ArrayImg (from ImgLib2)
    */
-  class ArraySparkImg[T,U<: NativeType[U] with RealType[U]](
+  class ArraySparkImg[T,U<: NativeType[U]](
       override var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]])(
     implicit val itm: ClassTag[T], var baseTypeMaker: () => U)
     extends SparkImage[T,U] {
@@ -105,7 +126,7 @@ object ScifioOps extends Serializable {
    * @tparam T The type of the primitive used to store data (for serialization)
    * @tparam U The type of the ArrayImg (from ImgLib2)
    */
-  trait SparkImage[T,U <: NativeType[U] with RealType[U]]
+  trait SparkImage[T,U <: NativeType[U]]
     extends Externalizable {
 
     var tm: ClassTag[T]
@@ -134,17 +155,14 @@ object ScifioOps extends Serializable {
     }
 
     protected def imgToArray(cImg: ArrayImg[U,_]): ArrayWithDim[T] = {
-      cImg.update(null) match {
-        case ada: ArrayDataAccess[_] =>
-          ada.getCurrentStorageArray match {
-            case fArr: Array[T] =>
+      cImg.getPrimitiveArray match {
+            case Some(fArr: Array[T]) =>
               ArrayWithDim(fArr,cImg.getDimensions)
-            case junk: AnyRef =>
+            case Some(junk) =>
               throw new IllegalAccessException(cImg+" has an unexpected type backing "+junk)
+            case None =>
+              throw new IllegalArgumentException("Image does not have a primitive array back")
           }
-        case _ =>
-          throw new IllegalAccessException("The array access is not available for " + cImg)
-      }
     }
 
     private def calcImg = coreImage match {
