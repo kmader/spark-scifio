@@ -6,18 +6,21 @@ import javax.imageio.ImageIO
 
 import _root_.io.scif.img.ImgOpener
 import fourquant.io.IOOps._
+import fourquant.io.ScifioOps.ArraySparkImg
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import org.apache.spark.SparkContext
-import org.scalatest.FunSuite
+import org.apache.spark.SparkContext._
+import org.scalatest.{Matchers, FunSuite}
 
 import scala.collection.JavaConversions._
 
-class ImageIOTests extends FunSuite {
-  lazy val sc = new SparkContext("local[4]","Test")
+class ImageIOTests extends FunSuite with Matchers {
   import fourquant.ImageIOTests._
+  lazy val sc = new SparkContext("local[4]","Test")
+
   val io = new ImgOpener()
 
   val xdim = 100
@@ -62,7 +65,7 @@ class ImageIOTests extends FunSuite {
 
   test("Read a fake image generically spark") {
     val dtg = () => new DoubleType
-    val pImgData = sc.genericArrayImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
+    val pImgData = sc.genericArrayImages[Double,DoubleType](testImgPath).cache
 
     assert(pImgData.count==1,"only one image")
 
@@ -74,7 +77,7 @@ class ImageIOTests extends FunSuite {
 
   test("Read and play with a generic image") {
     val dtg = () => new DoubleType
-    val pImgData = sc.genericArrayImages[Double,DoubleType](testImgPath, () => new DoubleType).cache
+    val pImgData = sc.genericArrayImages[Double,DoubleType](testImgPath).cache
     val indexData = pImgData.map(_._2).flatMap {
       inKV => for(i <- 0 to 5) yield (i,inKV)
     }
@@ -118,14 +121,51 @@ class ImageIOTests extends FunSuite {
 
   }
 
+  test("Gaussian filter a float image") {
+    val pImgData = sc.floatImages(testImgPath).
+      mapValues{iImg =>
+      new ArraySparkImg(
+        Right(
+        net.imglib2.algorithm.gauss.Gauss.toFloat(Array(3.0,3.0),iImg.getImg).
+        asInstanceOf[ArrayImg[FloatType,_]]
+        )
+      )
+    }
+
+    pImgData.count should equal (1)
+
+    val firstImage = pImgData.first._2.getImg
+
+    firstImage.firstElement().getRealDouble should equal (9720.0+-100)
+
+
+
+  }
+
+  test("Gaussian apply op") {
+    val gaussianOp =
+      (x: ArrayImg[FloatType,_]) => net.imglib2.algorithm.gauss.Gauss.toFloat(Array(3.0,3.0),x)
+    val pImgData = sc.floatImages(testImgPath).
+      mapValues(iImg => iImg.applyOp(gaussianOp))
+
+    assert(pImgData.count==1,"only one image")
+
+    val firstImage = pImgData.first._2.getImg
+
+    firstImage.firstElement().getRealDouble should equal (9720.0+-100)
+
+  }
+
   test("Read a big image in spark") {
 
     val pImgData = sc.doubleImages("/Users/mader/Dropbox/4Quant/Volume_Viewer_2.tif").cache
 
     assert(pImgData.count==1,"only one image")
 
-    val firstImage = pImgData.first._2.getImg
-    checkTestImage(firstImage.asInstanceOf[ArrayImg[FloatType,_]])
+    val firstImage = pImgData.first._2.getImg.asInstanceOf[ArrayImg[FloatType,_]]
+    firstImage.dimension(0) should equal (684)
+
+    firstImage.dimension(1) should equal (800)
 
   }
 

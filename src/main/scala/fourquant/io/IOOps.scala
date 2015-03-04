@@ -5,7 +5,7 @@ import io.scif.img.{ImgOpener, SCIFIOImgPlus}
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.{FloatType,DoubleType}
-import net.imglib2.`type`.numeric.integer.IntType
+import net.imglib2.`type`.numeric.integer.{ByteType, LongType, IntType}
 import net.imglib2.img.ImgFactory
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import org.apache.spark.SparkContext
@@ -24,6 +24,14 @@ import scala.collection.JavaConversions._
  */
 object IOOps {
 
+  /**
+   * So they needn't be manually created, they can just be implicitly thrown in
+   */
+  implicit val floatMaker = () => new FloatType()
+  implicit val doubleMaker = () => new DoubleType()
+  implicit val intMaker = () => new IntType()
+  implicit val longMaker = () => new LongType()
+  implicit val byteMaker = () => new ByteType()
 
   implicit class fqContext(sc: SparkContext) extends Serializable {
 
@@ -49,10 +57,9 @@ object IOOps {
      * @tparam U the imglib2 type for the ArrayImg representation
      * @return a list of pathnames (string) and image objects (SparkImage)
      */
-    def genericArrayImages[T,U <: NativeType[U] with RealType[U]](filepath: String,
-                                                             bType: () => U)(implicit
-                                                                             tm: ClassTag[T]):
-    RDD[(String, SparkImage[T,U])] = {
+    def genericArrayImages[T,U <: NativeType[U] with RealType[U]](filepath: String)(implicit
+                                    tm: ClassTag[T], bType: () => U):
+    RDD[(String, ArraySparkImg[T,U])] = {
       sc.binaryFiles(filepath).mapPartitions{
         curPart =>
           val io = new ImgOpener()
@@ -60,7 +67,7 @@ object IOOps {
             case (filename,pds) =>
               for (img<-io.openPDS[U](filename,pds,new ArrayImgFactory[U], bType() ))
               yield (filename,
-                new GenericSparkImage[T,U](Right(img.getImg.asInstanceOf[ArrayImg[U,_]]),bType)
+                new ArraySparkImg[T,U](Right(img.getImg.asInstanceOf[ArrayImg[U,_]]))
                 )
           }
       }
@@ -70,22 +77,22 @@ object IOOps {
      * A version of generic array Images for float-type images
      * @return float-formatted images
      */
-    def floatImages(filepath: String): RDD[(String,SparkImage[Float,FloatType])] = 
-      sc.genericArrayImages[Float,FloatType](filepath,() => new FloatType)
+    def floatImages(filepath: String) =
+      sc.genericArrayImages[Float,FloatType](filepath)
 
     /**
      * A version of generic array Images for double-type images
      * @return float-formatted images
      */
     def doubleImages(filepath: String) =
-      sc.genericArrayImages[Double,DoubleType](filepath,() => new DoubleType)
+      sc.genericArrayImages[Double,DoubleType](filepath)
 
     /**
      * A version of generic array Images for float-type images
      * @return float-formatted images
      */
     def intImages(filepath: String) =
-      sc.genericArrayImages[Int,IntType](filepath,() => new IntType)
+      sc.genericArrayImages[Int,IntType](filepath)
       
 
 

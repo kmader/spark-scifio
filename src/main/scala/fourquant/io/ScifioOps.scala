@@ -53,9 +53,9 @@ object ScifioOps extends Serializable {
    * @tparam T The type of the primitive used to store data (for serialization)
    * @tparam U The type of the ArrayImg (from ImgLib2)
    */
-  class GenericSparkImage[T,U<: NativeType[U] with RealType[U]](
-      override var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]],
-      override var baseTypeMaker: () => U)(implicit val itm: ClassTag[T])
+  class ArraySparkImg[T,U<: NativeType[U] with RealType[U]](
+      override var coreImage: Either[ArrayWithDim[T],ArrayImg[U,_]])(
+    implicit val itm: ClassTag[T], var baseTypeMaker: () => U)
     extends SparkImage[T,U] {
     /**
      * a basic constructor is required for creating these objects directly from an ObjectStream
@@ -63,10 +63,37 @@ object ScifioOps extends Serializable {
      * @return a very crippled (NPE's are almost certain) empty image
      */
     @deprecated("Only for un-externalization, otherwise it should be avoided completely","1.0")
-    protected[ScifioOps] def this() = this(Left(ArrayWithDim.dangerouslyEmpty[T]),
-      () => null.asInstanceOf[U])(null.asInstanceOf[ClassTag[T]])
+    protected[ScifioOps] def this() = this(Left(ArrayWithDim.dangerouslyEmpty[T]))(
+      null.asInstanceOf[ClassTag[T]],() => null.asInstanceOf[U])
 
     override var tm = itm
+
+    /**
+     * Apply an operation to the image which may change the content and size, but not type or
+     * storage
+     * @param op the operation to apply (in img space)
+     * @return a new GenericSparkImage ready for further operations
+     */
+    def applyOp(op: ArrayImg[U,_] => Img[U]) = {
+      new ArraySparkImg[T,U](Right(
+        op(getImg) match {
+          case aImg: ArrayImg[U, _] => aImg
+          case _ => throw new IllegalArgumentException("The operation must return the same type" +
+            " and img-storage as the original")
+        }))
+    }
+
+    def changeOp[V, W<: NativeType[W] with RealType[W]](
+      op: ArrayImg[U,_] => Img[W])(
+          implicit ntm: ClassTag[V], newTypeMaker: () => W) = {
+      new ArraySparkImg[V,W](Right(
+        op(getImg) match {
+          case aImg: ArrayImg[W, _] => aImg
+          case _ => throw new IllegalArgumentException("The operation must return the same type" +
+            " and img-storage as the original")
+        }))(ntm,newTypeMaker)
+    }
+
   }
 
   /**
