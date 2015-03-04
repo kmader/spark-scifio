@@ -24,14 +24,32 @@ object ScifioOps extends Serializable {
    */
   implicit class ImgWithDim[U <: Img[_]](img: U) {
 
-    def getDimensions: Array[Long] =
-      (0 to img.numDimensions()).map(img.dimension(_)).toArray
+    def getDimensions: Array[Long] = {
+      val oArray = (0 to img.numDimensions()).map(img.dimension(_)).toArray
+      println("\t\tGetting Dimensions:"+oArray.mkString(","))
+      oArray
+    }
+
+    /**
+     * A trimmed version with the trailing dimensions (if it is size 1) removed
+     * @note this is needed for the fft tools to work correctly
+     * @return the size of the image in each dimension as an array
+     */
+    def getTrimmedDimensions() = {
+      val cDim = getDimensions.reverse
+      if(cDim(0)<2) {
+        cDim.tail.reverse
+      } else {
+        cDim.reverse
+      }
+    }
+
 
     /**
      * Extract the primitive array from an image (if there is one)
      * @return an optional array
      */
-    def getPrimitiveArray: Option[Any] = {
+    def getUnderlyingObj(): Option[Any] = {
       img match {
         case aImg: ArrayImg[U,_] =>
           aImg.update(null) match {
@@ -46,6 +64,22 @@ object ScifioOps extends Serializable {
           None
       }
     }
+
+    /**
+     * Statically type the object as well (if you know what it is)
+     * @tparam T
+     * @return
+     */
+    def getPrimitiveArray[T](): Option[T] = {
+      getUnderlyingObj() match {
+        case Some(t: T) => Some(t)
+        case Some(a: Any) =>
+          println("The underyling object is not of the given type:"+a)
+          None
+        case None => None
+      }
+    }
+    
   }
 
 
@@ -155,11 +189,9 @@ object ScifioOps extends Serializable {
     }
 
     protected def imgToArray(cImg: ArrayImg[U,_]): ArrayWithDim[T] = {
-      cImg.getPrimitiveArray match {
-            case Some(fArr: Array[T]) =>
+      cImg.getPrimitiveArray[Array[T]]() match {
+            case Some(fArr) =>
               ArrayWithDim(fArr,cImg.getDimensions)
-            case Some(junk) =>
-              throw new IllegalAccessException(cImg+" has an unexpected type backing "+junk)
             case None =>
               throw new IllegalArgumentException("Image does not have a primitive array back")
           }
