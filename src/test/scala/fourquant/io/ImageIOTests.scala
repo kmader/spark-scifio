@@ -12,7 +12,6 @@ import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import org.apache.spark.SparkContext
-import org.apache.spark.SparkContext._
 import org.scalatest.{FunSuite, Matchers}
 
 import scala.collection.JavaConversions._
@@ -60,6 +59,8 @@ class ImageIOTests extends FunSuite with Matchers {
     val firstImage = inImage.head
     checkTestImage(firstImage.getImg().asInstanceOf[ArrayImg[FloatType,_]])
   }
+
+
 
 
   test("Read a fake image generically spark") {

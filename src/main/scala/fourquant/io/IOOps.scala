@@ -4,13 +4,14 @@ import fourquant.io.ScifioOps._
 import io.scif.img.{ImgOpener, SCIFIOImgPlus}
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
-import net.imglib2.`type`.numeric.real.{FloatType,DoubleType}
-import net.imglib2.`type`.numeric.integer.{ByteType, LongType, IntType}
+import net.imglib2.`type`.numeric.integer.{ByteType, IntType, LongType}
+import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.ImgFactory
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
 
+import scala.collection.mutable
 import scala.reflect.ClassTag
 
 //import net.imglib2.`type`.numeric.real.FloatType
@@ -72,6 +73,44 @@ object IOOps {
           }
       }
     }
+
+    /**
+     * A generic tool for opening images as Arrays
+     * @param filepath the path to the files that need to be loaded
+     * @param partCount is the number of partitions in the output
+     * @param regions is the regions of interest described as (x,y, size in x, size in y)
+     * @param bType a function which creates new FloatType objects and can be serialized
+     * @tparam T the primitive type for the array representation of the image
+     * @tparam U the imglib2 type for the ArrayImg representation
+     * @return a list of pathnames (string) and image objects (SparkImage)
+     */
+    def genericArrayImagesRegion2D[T,
+    U <: NativeType[U] with RealType[U]](filepath: String,
+                                        partCount: Int,
+                                         regions: Array[(Int,Int,Int,Int)])(
+      implicit tm: ClassTag[T], bType: () => U):
+    RDD[((String,Int,Int), ArraySparkImg[T,U])] = {
+      import ScifioOps.FQImgOpener
+      val regValues = sc.parallelize(regions)
+      sc.binaryFiles(filepath).cartesian(regValues).repartition(partCount).
+        mapPartitions{
+        curPart =>
+          val io = new ImgOpener()
+          val localNames = new mutable.HashMap[String,String]() // cache for locally copied files
+          curPart.flatMap{
+            case ((filename,pds),(sx,sy,wx,wy)) =>
+              val suffix = filename.split("[.]").reverse.head;
+              val localFileName = localNames.getOrElseUpdate(filename,io.flattenPDS(pds,suffix));
+              for (img<-io.openRegion2D[U](localFileName,bType(),sx,sy,wx,wy))
+                yield (
+                  (filename,sx,sy),
+                    new ArraySparkImg[T,U](Right(img.getImg.asInstanceOf[ArrayImg[U,_]]))
+                  )
+          }
+      }
+    }
+
+
 
     /**
      * A version of generic array Images for float-type images

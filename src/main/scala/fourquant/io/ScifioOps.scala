@@ -2,12 +2,16 @@ package fourquant.io
 
 import java.io._
 
-import io.scif.img.ImgOpener
+import io.scif.Metadata
+import io.scif.config.SCIFIOConfig
+import io.scif.config.SCIFIOConfig.ImgMode
+import io.scif.img.{ImageRegion, ImgFactoryHeuristic, ImgOpener}
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess
 import net.imglib2.img.{Img, ImgFactory}
+import net.imglib2.meta.Axes
 import org.apache.spark.input.PortableDataStream
 
 import scala.reflect.ClassTag
@@ -273,7 +277,7 @@ object ScifioOps extends Serializable {
      * @param suffix
      * @return
      */
-    private def flattenPDS(pds: PortableDataStream, suffix: String) = {
+    def flattenPDS(pds: PortableDataStream, suffix: String) = {
       if (isPathLocal(pds.getPath)) {
         pds.getPath
       } else {
@@ -295,6 +299,58 @@ object ScifioOps extends Serializable {
       val suffix = fileName.split(".").reverse.head
       imgOp.openImgs(flattenPDS(pds,suffix))
     }
+
+    def openPDSRegion[T<: RealType[T] with NativeType[T]](fileName: String,
+                                       pds: PortableDataStream,
+                                    tp: T, inRegion: ImageRegion) = {
+      val suffix = fileName.split("[.]").reverse.head
+
+      val roiConfig = new SCIFIOConfig()
+
+      roiConfig.imgOpenerSetRegion(inRegion)
+
+      //TODO currently this is locked into array image factory
+      roiConfig.imgOpenerSetImgFactoryHeuristic(new ImgFactoryHeuristic() {
+        override def createFactory[S <: NativeType[S]](metadata: Metadata, imgModes:
+        Array[ImgMode], t: S): ImgFactory[S] = new ArrayImgFactory[S]()
+      })
+      imgOp.openImgs[T](flattenPDS(pds,suffix),tp,roiConfig)
+    }
+
+
+
+    def openPDSRegion2D[T<: RealType[T] with NativeType[T]](fileName: String,
+                                       pds: PortableDataStream,
+                                       tp: T,
+                                       xstart: Int, ystart: Int,
+                                          xwidth: Int, ywidth: Int) =
+    openPDSRegion(fileName,pds,tp,
+      new ImageRegion(Array(Axes.X,Axes.Y),Array(xstart+"-"+(xstart+xwidth-1),
+        ystart+"-"+(ystart+ywidth-1)))
+    )
+
+    def openRegion[T<: RealType[T] with NativeType[T]](localName: String,
+                                                          tp: T, inRegion: ImageRegion) = {
+      val roiConfig = new SCIFIOConfig()
+
+      roiConfig.imgOpenerSetRegion(inRegion)
+
+      //TODO currently this is locked into array image factory
+      roiConfig.imgOpenerSetImgFactoryHeuristic(new ImgFactoryHeuristic() {
+        override def createFactory[S <: NativeType[S]](metadata: Metadata, imgModes:
+        Array[ImgMode], t: S): ImgFactory[S] = new ArrayImgFactory[S]()
+      })
+      imgOp.openImgs[T](localName,tp,roiConfig)
+    }
+
+    def openRegion2D[T<: RealType[T] with NativeType[T]](localName: String,
+                                                            tp: T,
+                                                            xstart: Int, ystart: Int,
+                                                            xwidth: Int, ywidth: Int) =
+      openRegion(localName,tp,
+        new ImageRegion(Array(Axes.X,Axes.Y),Array(xstart+"-"+(xstart+xwidth-1),
+          ystart+"-"+(ystart+ywidth-1)))
+      )
 
   }
 
