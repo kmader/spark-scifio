@@ -1,6 +1,7 @@
 package fourquant.io
 
 import fourquant.io.ScifioOps._
+import fourquant.utils.IOUtils
 import io.scif.img.{ImgOpener, SCIFIOImgPlus}
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
@@ -18,7 +19,7 @@ import scala.reflect.ClassTag
 //import net.imglib2.`type`.numeric.integer.IntType
 
 import scala.collection.JavaConversions._
-
+import IOUtils._
 /**
  * A general set of opertions for importing images
  * Created by mader on 2/27/15.
@@ -100,7 +101,7 @@ object IOOps {
           curPart.flatMap{
             case ((filename,pds),(sx,sy,wx,wy)) =>
               val suffix = filename.split("[.]").reverse.head;
-              val localFileName = localNames.getOrElseUpdate(filename,io.flattenPDS(pds,suffix));
+              val localFileName = localNames.getOrElseUpdate(filename,pds.makeLocal(suffix));
               for (img<-io.openRegion2D[U](localFileName,bType(),sx,sy,wx,wy))
                 yield (
                   (filename,sx,sy),

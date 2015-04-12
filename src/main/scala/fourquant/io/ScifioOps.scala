@@ -2,12 +2,14 @@ package fourquant.io
 
 import java.io._
 
-import io.scif.Metadata
+import fourquant.utils.IOUtils
 import io.scif.config.SCIFIOConfig
 import io.scif.config.SCIFIOConfig.ImgMode
 import io.scif.img.{ImageRegion, ImgFactoryHeuristic, ImgOpener}
-import net.imglib2.`type`.NativeType
+import io.scif.{Metadata, SCIFIO}
 import net.imglib2.`type`.numeric.RealType
+import net.imglib2.`type`.numeric.real.FloatType
+import net.imglib2.`type`.{NativeType, Type}
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess
 import net.imglib2.img.{Img, ImgFactory}
@@ -20,13 +22,15 @@ import scala.reflect.ClassTag
  * Created by mader on 2/27/15.
  */
 object ScifioOps extends Serializable {
+  val sf = new SCIFIO()
 
   /**
    * Functions the Img classes should have that are annoying to write
    * @param img
-   * @tparam U
+   * @tparam T the type of the image
    */
-  implicit class ImgWithDim[U <: Img[_]](img: U) {
+  implicit class ImgWithDim[T<: NativeType[T]](img: Img[T]) {
+    lazy val sfIP = sf.imgUtil().makeSCIFIOImgPlus(img)
 
     def getDimensions: Array[Long] = {
       val oArray = (0 to img.numDimensions()).map(img.dimension(_)).toArray
@@ -54,8 +58,8 @@ object ScifioOps extends Serializable {
      * @return an optional array
      */
     def getUnderlyingObj(): Option[Any] = {
-      img match {
-        case aImg: ArrayImg[U,_] =>
+
+      val aImg = sf.imgUtil().getArrayAccess(sfIP)
           aImg.update(null) match {
             case ada: ArrayDataAccess[_] =>
               Some(ada.getCurrentStorageArray)
@@ -63,20 +67,16 @@ object ScifioOps extends Serializable {
               println("The array access is not available for " + aImg)
               None
           }
-        case _ =>
-          println("Image is not of type ArrayImage")
-          None
-      }
     }
 
     /**
      * Statically type the object as well (if you know what it is)
-     * @tparam T
+     * @tparam U the type of output eg Array[Float]
      * @return
      */
-    def getPrimitiveArray[T](): Option[T] = {
+    def getPrimitiveArray[U](): Option[U] = {
       getUnderlyingObj() match {
-        case Some(t: T) => Some(t)
+        case Some(t: U) => Some(t)
         case Some(a: Any) =>
           println("The underyling object is not of the given type:"+a)
           None
@@ -253,51 +253,22 @@ object ScifioOps extends Serializable {
 
   }
 
-
   /**
    * Add the ability (hacky) to open images from PortableDataStreams
    * @param imgOp the ImgOpener class to be extended
    */
   implicit class FQImgOpener(imgOp: ImgOpener) {
-    /**
-     *
-     * @param filepath the given file path
-     * @return if it is a local file
-     */
-    private def isPathLocal(filepath: String): Boolean = {
-      try {
-        new File(filepath).exists()
-      } catch {
-        case _ => false
-      }
-    }
-    /**
-     * Provides a local path for opening a PortableDataStream
-     * @param pds
-     * @param suffix
-     * @return
-     */
-    def flattenPDS(pds: PortableDataStream, suffix: String) = {
-      if (isPathLocal(pds.getPath)) {
-        pds.getPath
-      } else {
-        println("Copying PDS Resource....")
-        val bais = new ByteArrayInputStream(pds.toArray())
-        val tempFile = File.createTempFile("SparkScifioOps","."+suffix)
-        org.apache.commons.io.IOUtils.copy(bais,new FileOutputStream(tempFile))
-        tempFile.getAbsolutePath
-      }
-    }
+    import IOUtils._
 
     def openPDS[T<: RealType[T]](fileName: String, pds: PortableDataStream, af: ImgFactory[T], tp:
     T) = {
       val suffix = fileName.split("[.]").reverse.head
-      imgOp.openImgs[T](flattenPDS(pds,suffix),af,tp)
+      imgOp.openImgs[T](pds.makeLocal(suffix),af,tp)
     }
 
     def openPDS(fileName: String, pds: PortableDataStream) = {
       val suffix = fileName.split(".").reverse.head
-      imgOp.openImgs(flattenPDS(pds,suffix))
+      imgOp.openImgs(pds.makeLocal(suffix))
     }
 
     def openPDSRegion[T<: RealType[T] with NativeType[T]](fileName: String,
@@ -314,7 +285,7 @@ object ScifioOps extends Serializable {
         override def createFactory[S <: NativeType[S]](metadata: Metadata, imgModes:
         Array[ImgMode], t: S): ImgFactory[S] = new ArrayImgFactory[S]()
       })
-      imgOp.openImgs[T](flattenPDS(pds,suffix),tp,roiConfig)
+      imgOp.openImgs[T](pds.makeLocal(suffix),tp,roiConfig)
     }
 
 
@@ -353,5 +324,47 @@ object ScifioOps extends Serializable {
       )
 
   }
+
+
+   private[fourquant] def readPath(path: String) = {
+    val creader = sf.initializer().initializeReader(path)
+    (creader,creader.getMetadata())
+  }
+
+  /**
+   * Read a region using scifio readers
+   * @param path
+   * @param pos
+   * @param regSize
+   * @return
+   */
+  def readRegion(path: String, pos: Array[Long], regSize: Array[Long]) = {
+    val (creader,meta) = readPath(path)
+    val sliceMeta = meta.get(0)
+    val p = creader.openPlane(0,0, pos,regSize)
+    p.getBytes()
+  }
+
+
+
+  def readRegionAsImg[T<: NativeType[T]](path: String, pos: Array[Long], regSize: Array[Long],
+                                         tp: Type[T]) = {
+    val scnf = new SCIFIOConfig()
+    scnf.imgOpenerSetImgFactoryHeuristic(new ImgFactoryHeuristic() {
+      override def createFactory[T <: NativeType[T]](metadata: Metadata, imgModes:
+      Array[ImgMode], t: T): ImgFactory[T] = new ArrayImgFactory[T]()
+    })
+
+    val (creader,meta) = readPath(path)
+
+    val cArrImage = new ArrayImgFactory[FloatType].create(regSize,new FloatType())
+    val ip = sf.imgUtil().makeSCIFIOImgPlus(cArrImage)
+
+    val p = creader.openPlane(0,0, pos,regSize)
+    sf.planeConverter().getArrayConverter().populatePlane(creader,0,0,p.getBytes(),ip,scnf)
+
+    ip.getImg().asInstanceOf[ArrayImg[T,_]]
+  }
+
 
 }

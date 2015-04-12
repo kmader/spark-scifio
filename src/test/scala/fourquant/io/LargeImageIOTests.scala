@@ -1,6 +1,6 @@
 package fourquant.io
 
-import _root_.io.scif.Metadata
+import _root_.io.scif.{SCIFIO, Metadata}
 import _root_.io.scif.config.SCIFIOConfig
 import _root_.io.scif.config.SCIFIOConfig.ImgMode
 import _root_.io.scif.img.{ImageRegion, ImgFactoryHeuristic, ImgOpener}
@@ -11,7 +11,7 @@ import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.ImgFactory
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
-import net.imglib2.meta.Axes
+import net.imglib2.meta.{ImgPlus, Axes}
 import org.apache.spark.SparkContext
 import org.scalatest.{FunSuite, Matchers}
 
@@ -46,6 +46,42 @@ class LargeImageIOTests extends FunSuite with Matchers {
       assert(imgIt.next().getRealDouble == 65535.0, "The first value")
       imgIt.next()
       assert(imgIt.next().getRealDouble == 0.0, "The third value")
+    }
+  }
+
+  test("Use the Reader class") {
+    val sf = new SCIFIO()
+    val scnf = new SCIFIOConfig()
+
+    val creader = sf.initializer().initializeReader(bigImage)
+
+    val meta = creader.getMetadata()
+    println(creader+", "+meta)
+    creader.getImageCount shouldBe 1
+    val imet = meta.get(0)
+    creader.getPlaneCount(0) shouldBe 1
+    imet.getAxesLengths()(0) shouldBe 40000
+    imet.getAxesLengths()(1) shouldBe 40000
+    val planeSize = Array(2000L,2000L)
+    val p = creader.openPlane(0,0, Array(36000L,8000L),planeSize)
+
+    p.getLengths()(0) shouldBe planeSize(0)
+    p.getLengths()(1) shouldBe planeSize(1)
+
+    p.getBytes().length shouldBe planeSize(0)*planeSize(1)
+    p.getBytes().map(_.toDouble).sum shouldBe 1785
+
+    val cArrImage = new ArrayImgFactory[FloatType].create(planeSize,new FloatType())
+    val ip = new ImgPlus[FloatType](cArrImage,"Output")
+
+    sf.planeConverter().getArrayConverter().populatePlane(creader,0,0,p.getBytes(),ip,scnf)
+
+    import ScifioOps._
+    ip.getImg().getPrimitiveArray[Array[Float]]() match {
+      case Some(arr) =>
+        arr.length shouldBe planeSize(0)*planeSize(1)
+        arr.sum shouldBe 1785
+      case None => throw new RuntimeException("Image could not be read")
     }
   }
 
