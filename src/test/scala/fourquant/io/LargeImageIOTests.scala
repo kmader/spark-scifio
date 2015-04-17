@@ -1,23 +1,24 @@
 package fourquant.io
 
-import _root_.io.scif.{SCIFIO, Metadata}
 import _root_.io.scif.config.SCIFIOConfig
 import _root_.io.scif.config.SCIFIOConfig.ImgMode
 import _root_.io.scif.img.{ImageRegion, ImgFactoryHeuristic, ImgOpener}
+import _root_.io.scif.{Metadata, SCIFIO}
 import fourquant.io.IOOps._
 import fourquant.io.ScifioOps.ArraySparkImg
+import fourquant.utils.SilenceLogs
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.ImgFactory
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
-import net.imglib2.meta.{ImgPlus, Axes}
+import net.imglib2.meta.Axes
 import org.apache.spark.SparkContext
 import org.scalatest.{FunSuite, Matchers}
 
 import scala.collection.JavaConversions._
 
-class LargeImageIOTests extends FunSuite with Matchers {
+class LargeImageIOTests extends FunSuite with Matchers with SilenceLogs {
   lazy val sc = new SparkContext("local[4]","Test")
   val testDataDir = "/Users/mader/Dropbox/Informatics/spark-imageio/test-data/"
   val bigImage = testDataDir + "Hansen_GFC2014_lossyear_00N_000E.tif"
@@ -72,8 +73,8 @@ class LargeImageIOTests extends FunSuite with Matchers {
     p.getBytes().map(_.toDouble).sum shouldBe 1785
 
     val cArrImage = new ArrayImgFactory[FloatType].create(planeSize,new FloatType())
-    val ip = new ImgPlus[FloatType](cArrImage,"Output")
 
+    val ip = sf.imgUtil().makeSCIFIOImgPlus(cArrImage)
     sf.planeConverter().getArrayConverter().populatePlane(creader,0,0,p.getBytes(),ip,scnf)
 
     import ScifioOps._

@@ -2,6 +2,7 @@ package fourquant.io
 
 import fourquant.io.ScifioOps._
 import fourquant.utils.IOUtils
+import io.scif.SCIFIO
 import io.scif.img.{ImgOpener, SCIFIOImgPlus}
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
@@ -96,6 +97,7 @@ object IOOps {
       sc.binaryFiles(filepath).cartesian(regValues).repartition(partCount).
         mapPartitions{
         curPart =>
+          val sf = new SCIFIO()
           val io = new ImgOpener()
           val localNames = new mutable.HashMap[String,String]() // cache for locally copied files
           curPart.flatMap{

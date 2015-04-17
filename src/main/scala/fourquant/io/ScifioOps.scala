@@ -22,7 +22,7 @@ import scala.reflect.ClassTag
  * Created by mader on 2/27/15.
  */
 object ScifioOps extends Serializable {
-  val sf = new SCIFIO()
+
 
   /**
    * Functions the Img classes should have that are annoying to write
@@ -30,6 +30,7 @@ object ScifioOps extends Serializable {
    * @tparam T the type of the image
    */
   implicit class ImgWithDim[T<: NativeType[T]](img: Img[T]) {
+    lazy val sf = new SCIFIO()
     lazy val sfIP = sf.imgUtil().makeSCIFIOImgPlus(img)
 
     def getDimensions: Array[Long] = {
@@ -327,6 +328,7 @@ object ScifioOps extends Serializable {
 
 
    private[fourquant] def readPath(path: String) = {
+     val sf = new SCIFIO()
     val creader = sf.initializer().initializeReader(path)
     (creader,creader.getMetadata())
   }
@@ -346,9 +348,9 @@ object ScifioOps extends Serializable {
   }
 
 
-
   def readRegionAsImg[T<: NativeType[T]](path: String, pos: Array[Long], regSize: Array[Long],
                                          tp: Type[T]) = {
+    val sf = new SCIFIO()
     val scnf = new SCIFIOConfig()
     scnf.imgOpenerSetImgFactoryHeuristic(new ImgFactoryHeuristic() {
       override def createFactory[T <: NativeType[T]](metadata: Metadata, imgModes:

@@ -2,12 +2,16 @@ package fourquant.utils
 
 import java.io._
 
+import org.apache.spark.SparkConf
 import org.apache.spark.input.PortableDataStream
 
 /**
  * Created by mader on 4/12/15.
  */
 object IOUtils {
+
+  var localTmpPath = new SparkConf().getOption("spark.local.dir")
+
   /**
    *
    * @param filepath the given file path
@@ -42,7 +46,7 @@ object IOUtils {
      * @param basePath the location to save the file
      * @return the path to the local file to read
      */
-    def makeLocal(suffix: String, basePath: Option[String] = None) = {
+    def makeLocal(suffix: String, basePath: Option[String] = localTmpPath) = {
       if (pds.isLocal()) {
         pds.getTrimmedPath()
       } else {
