@@ -7,12 +7,12 @@ import _root_.io.scif.{Metadata, SCIFIO}
 import fourquant.io.IOOps._
 import fourquant.io.ScifioOps.ArraySparkImg
 import fourquant.utils.SilenceLogs
+import net.imagej.axis.Axes
 import net.imglib2.`type`.NativeType
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.{DoubleType, FloatType}
 import net.imglib2.img.ImgFactory
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
-import net.imglib2.meta.Axes
 import org.apache.spark.SparkContext
 import org.scalatest.{FunSuite, Matchers}
 

@@ -7,13 +7,14 @@ import io.scif.config.SCIFIOConfig
 import io.scif.config.SCIFIOConfig.ImgMode
 import io.scif.img.{ImageRegion, ImgFactoryHeuristic, ImgOpener}
 import io.scif.{Metadata, SCIFIO}
+import net.imagej.axis.Axes
 import net.imglib2.`type`.numeric.RealType
 import net.imglib2.`type`.numeric.real.FloatType
 import net.imglib2.`type`.{NativeType, Type}
 import net.imglib2.img.array.{ArrayImg, ArrayImgFactory}
 import net.imglib2.img.basictypeaccess.array.ArrayDataAccess
 import net.imglib2.img.{Img, ImgFactory}
-import net.imglib2.meta.Axes
+
 import org.apache.spark.input.PortableDataStream
 
 import scala.reflect.ClassTag
@@ -26,6 +27,7 @@ object ScifioOps extends Serializable {
 
   /**
    * Functions the Img classes should have that are annoying to write
+ *
    * @param img
    * @tparam T the type of the image
    */
@@ -41,6 +43,7 @@ object ScifioOps extends Serializable {
 
     /**
      * A trimmed version with the trailing dimensions (if it is size 1) removed
+ *
      * @note this is needed for the fft tools to work correctly
      * @return the size of the image in each dimension as an array
      */
@@ -56,6 +59,7 @@ object ScifioOps extends Serializable {
 
     /**
      * Extract the primitive array from an image (if there is one)
+ *
      * @return an optional array
      */
     def getUnderlyingObj(): Option[Any] = {
@@ -72,6 +76,7 @@ object ScifioOps extends Serializable {
 
     /**
      * Statically type the object as well (if you know what it is)
+ *
      * @tparam U the type of output eg Array[Float]
      * @return
      */
@@ -91,6 +96,7 @@ object ScifioOps extends Serializable {
 
   /**
    * The simplist, strongly typed representation of the image
+ *
    * @param rawArray the rawArray to store the values in
    * @param dim the dimensions (imglib2 format for the image)
    * @tparam T the type of the image
@@ -107,6 +113,7 @@ object ScifioOps extends Serializable {
 
   /**
    * A basic class which implements a very basic version of the SparkImage trait
+ *
    * @param coreImage the image stored as an 'Either' block
    * @param baseTypeMaker the closure for creating the ImgLib2 type since they are not serializable
    * @param itm the classtag for the T since it arrays need to be generated occasionally
@@ -120,6 +127,7 @@ object ScifioOps extends Serializable {
     /**
      * a basic constructor is required for creating these objects directly from an ObjectStream
      * (a dummy empty image which can be populated during the un-serialization)
+ *
      * @return a very crippled (NPE's are almost certain) empty image
      */
     @deprecated("Only for un-externalization, otherwise it should be avoided completely","1.0")
@@ -131,6 +139,7 @@ object ScifioOps extends Serializable {
     /**
      * Apply an operation to the image which may change the content and size, but not type or
      * storage
+ *
      * @param op the operation to apply (in img space)
      * @return a new GenericSparkImage ready for further operations
      */
@@ -160,6 +169,7 @@ object ScifioOps extends Serializable {
    * The basic functionality of a SparkImage which uses the ImgLib2 primitives for storing the
    * images on local machines and sending them around, it then switches to the ArrayWithDim
    * format for saving them to disk.
+ *
    * @note T and U must be matched, creating a Double with FloatType will eventually cause hairy
    *       error messages
    * @tparam T The type of the primitive used to store data (for serialization)
@@ -179,6 +189,7 @@ object ScifioOps extends Serializable {
     /**
      * These methods are pretty basic and just support primitives and their corresponding ImgLib2
      * types
+ *
      * @param dimArray
      * @return
      */
@@ -228,6 +239,7 @@ object ScifioOps extends Serializable {
     /**
      * custom serialization writes the typeMaker function, the ClassTag and then the ArrayWithDim
      * form of the image to the output
+ *
      * @param out the ObjectOutput to write everything to
      */
     @throws[IOException]("if the file doesn't exist")
@@ -240,6 +252,7 @@ object ScifioOps extends Serializable {
     /**
      * custom serialization for reading in these objects, the order of reading is the typeMaker
      * closure, the ClassTag and then the ArrayWithDim
+ *
      * @param in the input stream to read from
      */
     @throws[IOException]("if the file doesn't exist")
@@ -256,6 +269,7 @@ object ScifioOps extends Serializable {
 
   /**
    * Add the ability (hacky) to open images from PortableDataStreams
+ *
    * @param imgOp the ImgOpener class to be extended
    */
   implicit class FQImgOpener(imgOp: ImgOpener) {
@@ -288,6 +302,7 @@ object ScifioOps extends Serializable {
       })
       imgOp.openImgs[T](pds.makeLocal(suffix),tp,roiConfig)
     }
+
 
 
 
@@ -335,6 +350,7 @@ object ScifioOps extends Serializable {
 
   /**
    * Read a region using scifio readers
+ *
    * @param path
    * @param pos
    * @param regSize

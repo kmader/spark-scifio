@@ -36,6 +36,7 @@ object IOUtils {
    *                 useful version, or null
    * @tparam A the useful type which is not serializable
    * @tparam B the serializable type which is generally not useful
+   * @note requires a no-option constructor
    */
   abstract class PortableObject[A,B <: Serializable](var coreData: Either[A,B])(
     implicit cta: ClassTag[A], ctb: ClassTag[B])
