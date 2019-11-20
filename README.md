@@ -1,4 +1,4 @@
-# Spark Scifio
+# Spark Scifio ![](https://github.com/kmader/spark-scifio/workflows/compile/badge.svg)
 
 A Spark-interface for the io.scif and other libraries to take advantage of the ImageJ2 ecosystem.
 
