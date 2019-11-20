@@ -18,4 +18,4 @@ jobs:
     - name: compile
       run: mvn install -DskipTests
     - name: test
-      run: mvn package
+      run: mvn package -DskipTests
