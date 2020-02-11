@@ -121,7 +121,7 @@
     <repositories>
         <repository>
             <id>imagej.public</id>
-            <url>http://maven.imagej.net/content/groups/public</url>
+            <url>https://maven.imagej.net/content/groups/public</url>
         </repository>
         <repository>
             <id>apache-repo</id>
@@ -140,7 +140,7 @@
         <pluginRepository>
             <id>scala-tools.org</id>
             <name>Scala-tools Maven2 Repository</name>
-            <url>http://scala-tools.org/repo-releases</url>
+            <url>https://scala-tools.org/repo-releases</url>
         </pluginRepository>
     </pluginRepositories>
 
